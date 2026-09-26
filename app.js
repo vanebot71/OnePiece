@@ -22,13 +22,8 @@
   };
 
   // Voces de ElevenLabs (necesitan API key). Para agregar otra, añade su ID aquí.
-  // Los ajustes de Bunty son los de la muestra: …_pvc_sp100_s99_sb75_se0_b_m2.mp3
   const ELEVEN_VOICES = [
-    {
-      id: 'jbRykb1aT1FR2rySl8nh',
-      name: 'Bunty – Warm and Clear',
-      settings: { stability: 0.99, similarity_boost: 0.75, style: 0, use_speaker_boost: true, speed: 1.0 },
-    },
+    { id: 'Q7BPMFMZj2VEioKV2g3U', name: 'ElevenLabs' },
   ];
   const ELEVEN_MODEL = 'eleven_multilingual_v2';
   const ELEVEN_PREFIX = 'eleven:';

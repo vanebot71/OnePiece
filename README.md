@@ -33,7 +33,7 @@ En GitHub: **Settings → Pages → Branch: `main` / root → Save**. Tendrás l
 `https://<tu-usuario>.github.io/OnePiece/` y podrás usarla desde el celular.
 
 ### Voz de ElevenLabs ⭐
-La app incluye la voz de ElevenLabs **Bunty – Warm and Clear** (`jbRykb1aT1FR2rySl8nh`), con los mismos ajustes de la muestra (estabilidad 0.99, similitud 0.75, estilo 0, speaker boost, modelo multilingüe v2). Para usarla:
+La app incluye la voz de ElevenLabs `Q7BPMFMZj2VEioKV2g3U`. Para usarla:
 1. Crea una API key en [elevenlabs.io](https://elevenlabs.io) → *Developers → API Keys*
    (con permiso de *Text to Speech*).
 2. En la app elige la voz ⭐ en la lista y pega tu API key (se guarda solo en tu navegador).
@@ -64,7 +64,7 @@ python libro_a_audio.py mi_libro.pdf --desde 10 --hasta 25
 # Ver todas las voces en español
 python libro_a_audio.py --voces
 
-# Con la voz de ElevenLabs (jbRykb1aT1FR2rySl8nh)
+# Con la voz de ElevenLabs (Q7BPMFMZj2VEioKV2g3U)
 export ELEVENLABS_API_KEY=sk_tu_clave        # en Windows: set ELEVENLABS_API_KEY=sk_tu_clave
 python libro_a_audio.py mi_libro.pdf --elevenlabs
 python libro_a_audio.py mi_libro.pdf --elevenlabs OTRO_ID_DE_VOZ   # otra voz de ElevenLabs
