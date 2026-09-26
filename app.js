@@ -513,6 +513,19 @@
     if (f) loadFile(f);
   });
 
+  $('sampleBtn').addEventListener('click', () => {
+    const texto = `Capítulo 1. El sueño de Luffy.
+
+Monkey D. Luffy quería ser el Rey de los Piratas. Desde niño soñaba con navegar por el Grand Line y encontrar el tesoro más grande del mundo: el One Piece.
+
+Un día subió a un pequeño bote y se hizo a la mar. «¡Voy a reunir a la mejor tripulación!», gritó mirando el horizonte.
+
+Capítulo 2. El cazador de piratas.
+
+En la primera isla encontró a Roronoa Zoro, un espadachín atado en el patio de la base de la Marina. Zoro aceptó unirse a él con una condición: algún día sería el mejor espadachín del mundo.`;
+    loadFile(new File([texto], 'Ejemplo - El sueño de Luffy.txt', { type: 'text/plain' }));
+  });
+
   els.playBtn.addEventListener('click', () => (playing ? pause() : play()));
   els.stopBtn.addEventListener('click', () => {
     stop();
