@@ -32,6 +32,16 @@ Funciones:
 En GitHub: **Settings → Pages → Branch: `main` / root → Save**. Tendrás la app en
 `https://<tu-usuario>.github.io/OnePiece/` y podrás usarla desde el celular.
 
+### Voz de ElevenLabs ⭐
+La app incluye la voz de ElevenLabs `jbRykb1aT1FR2rySl8nh`. Para usarla:
+1. Crea una API key en [elevenlabs.io](https://elevenlabs.io) → *Developers → API Keys*
+   (con permiso de *Text to Speech*).
+2. En la app elige la voz ⭐ en la lista y pega tu API key (se guarda solo en tu navegador).
+3. Pulsa ▶.
+
+Cada frase que se lee consume créditos de tu cuenta de ElevenLabs. Para agregar más voces,
+añade su ID a la lista `ELEVEN_VOICES` al inicio de `app.js`.
+
 ---
 
 ## 2. Script: convertir el libro a MP3
@@ -53,7 +63,15 @@ python libro_a_audio.py mi_libro.pdf --desde 10 --hasta 25
 
 # Ver todas las voces en español
 python libro_a_audio.py --voces
+
+# Con la voz de ElevenLabs (jbRykb1aT1FR2rySl8nh)
+export ELEVENLABS_API_KEY=sk_tu_clave        # en Windows: set ELEVENLABS_API_KEY=sk_tu_clave
+python libro_a_audio.py mi_libro.pdf --elevenlabs
+python libro_a_audio.py mi_libro.pdf --elevenlabs OTRO_ID_DE_VOZ   # otra voz de ElevenLabs
 ```
+
+> Con ElevenLabs la velocidad va de `-30%` a `+20%`. Un libro entero puede consumir
+> muchos créditos: prueba primero con `--desde 1 --hasta 3`.
 
 Algunas voces: `es-MX-DaliaNeural` (por defecto), `es-MX-JorgeNeural`,
 `es-ES-ElviraNeural`, `es-ES-AlvaroNeural`, `es-AR-TomasNeural`, `es-CO-SalomeNeural`.

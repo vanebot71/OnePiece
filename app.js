@@ -17,7 +17,16 @@
     playBtn: $('playBtn'), stopBtn: $('stopBtn'), prevBtn: $('prevBtn'), nextBtn: $('nextBtn'),
     progress: $('progress'), progressText: $('progressText'),
     rate: $('rate'), rateVal: $('rateVal'), pitch: $('pitch'), pitchVal: $('pitchVal'),
+    pitchLabel: $('pitchLabel'), elevenBox: $('elevenBox'), elevenKey: $('elevenKey'),
+    voiceStatus: $('voiceStatus'),
   };
+
+  // Voces de ElevenLabs (necesitan API key). Para agregar otra, añade su ID aquí.
+  const ELEVEN_VOICES = [
+    { id: 'jbRykb1aT1FR2rySl8nh', name: 'ElevenLabs' },
+  ];
+  const ELEVEN_MODEL = 'eleven_multilingual_v2';
+  const ELEVEN_PREFIX = 'eleven:';
 
   // Estado
   let sections = [];      // [{ title, chunks: [string] }]
@@ -189,6 +198,7 @@
         throw new Error('No se encontró texto. Si el PDF es escaneado (imágenes), necesita OCR primero.');
       }
 
+      clearClips();
       offsets = [];
       total = 0;
       for (const s of sections) { offsets.push(total); total += s.chunks.length; }
@@ -257,24 +267,155 @@
 
   function loadVoices() {
     voices = synth.getVoices();
-    if (!voices.length) return;
     const saved = store.get('lector:voice');
     const sorted = [...voices].sort((a, b) => {
       const ae = a.lang.toLowerCase().startsWith('es') ? 0 : 1;
       const be = b.lang.toLowerCase().startsWith('es') ? 0 : 1;
       return ae - be || a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name);
     });
-    els.voiceSelect.innerHTML = sorted
+    const eleven = ELEVEN_VOICES
+      .map((v) => `<option value="${ELEVEN_PREFIX}${v.id}">⭐ ${escapeHtml(v.name)} (${v.id})</option>`).join('');
+    const system = sorted
       .map((v) => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)} (${v.lang})</option>`).join('');
-    if (saved && voices.some((v) => v.name === saved)) els.voiceSelect.value = saved;
+    els.voiceSelect.innerHTML =
+      `<optgroup label="ElevenLabs (requiere API key)">${eleven}</optgroup>` +
+      (system ? `<optgroup label="Voces del navegador">${system}</optgroup>` : '');
+    const options = [...els.voiceSelect.options].map((o) => o.value);
+    if (saved && options.includes(saved)) els.voiceSelect.value = saved;
+    else if (voices.length) els.voiceSelect.value = sorted[0].name;
+    updateEngineUi();
   }
 
   function currentVoice() {
     return voices.find((v) => v.name === els.voiceSelect.value) || null;
   }
 
+  function elevenVoiceId() {
+    const v = els.voiceSelect.value;
+    return v.startsWith(ELEVEN_PREFIX) ? v.slice(ELEVEN_PREFIX.length) : null;
+  }
+
+  function setVoiceStatus(msg, isError = false) {
+    els.voiceStatus.textContent = msg || '';
+    els.voiceStatus.classList.toggle('hidden', !msg);
+    els.voiceStatus.classList.toggle('error', isError);
+  }
+
+  function updateEngineUi() {
+    const eleven = !!elevenVoiceId();
+    els.elevenBox.classList.toggle('hidden', !eleven);
+    els.pitchLabel.classList.toggle('hidden', eleven);
+    if (eleven && !els.elevenKey.value.trim()) {
+      setVoiceStatus('Pega tu API key de ElevenLabs (elevenlabs.io → Developers → API Keys). Se guarda solo en este navegador.');
+    } else {
+      setVoiceStatus('');
+    }
+    if (eleven) fetchElevenNames();
+  }
+
+  // ---------- ElevenLabs ----------
+
+  const audio = new Audio();
+  audio.preservesPitch = true;
+  const clipCache = new Map(); // "voz|índice" → Promise<URL de blob>
+  let namesFetchedFor = null;
+
+  function clearClips() {
+    for (const p of clipCache.values()) p.then((url) => URL.revokeObjectURL(url), () => {});
+    clipCache.clear();
+  }
+
+  function getClip(g) {
+    const voiceId = elevenVoiceId();
+    const key = `${voiceId}|${g}`;
+    if (clipCache.has(key)) return clipCache.get(key);
+
+    let s = offsets.length - 1;
+    while (s > 0 && offsets[s] > g) s--;
+    const text = sections[s].chunks[g - offsets[s]];
+
+    const p = fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': els.elevenKey.value.trim(),
+        'Content-Type': 'application/json',
+        Accept: 'audio/mpeg',
+      },
+      body: JSON.stringify({ text, model_id: ELEVEN_MODEL }),
+    }).then(async (res) => {
+      if (!res.ok) {
+        let detail = '';
+        try { const j = await res.json(); detail = j.detail?.message || j.detail?.status || JSON.stringify(j.detail || j); } catch { /* sin cuerpo */ }
+        const hint = res.status === 401 ? 'API key inválida o sin permiso de texto a voz.'
+          : res.status === 429 ? 'Demasiadas solicitudes o sin créditos.' : '';
+        throw new Error(`ElevenLabs ${res.status}. ${hint} ${detail}`.trim());
+      }
+      return URL.createObjectURL(await res.blob());
+    });
+    p.catch(() => clipCache.delete(key)); // permitir reintento
+    clipCache.set(key, p);
+
+    // Mantener la caché pequeña
+    while (clipCache.size > 12) {
+      const [oldKey, oldP] = clipCache.entries().next().value;
+      clipCache.delete(oldKey);
+      oldP.then((url) => URL.revokeObjectURL(url), () => {});
+    }
+    return p;
+  }
+
+  async function fetchElevenNames() {
+    const apiKey = els.elevenKey.value.trim();
+    if (!apiKey || namesFetchedFor === apiKey) return;
+    namesFetchedFor = apiKey;
+    for (const v of ELEVEN_VOICES) {
+      try {
+        const res = await fetch(`https://api.elevenlabs.io/v1/voices/${v.id}`, { headers: { 'xi-api-key': apiKey } });
+        if (!res.ok) continue;
+        const { name } = await res.json();
+        const opt = els.voiceSelect.querySelector(`option[value="${ELEVEN_PREFIX}${v.id}"]`);
+        if (name && opt) opt.textContent = `⭐ ${name} (ElevenLabs)`;
+      } catch { /* el nombre es opcional */ }
+    }
+  }
+
+  async function speakEleven(myToken) {
+    if (!els.elevenKey.value.trim()) {
+      pause();
+      updateEngineUi();
+      els.elevenKey.focus();
+      return;
+    }
+    const g = offsets[pos.s] + pos.c;
+    highlight(true);
+    updateProgress();
+    setVoiceStatus('Generando voz…');
+    try {
+      const url = await getClip(g);
+      if (myToken !== token) return;
+      setVoiceStatus('');
+      // Pedir por adelantado las siguientes frases para que no haya pausas
+      for (let k = 1; k <= 2 && g + k < total; k++) getClip(g + k).catch(() => {});
+      audio.src = url;
+      audio.playbackRate = parseFloat(els.rate.value);
+      audio.onended = () => {
+        if (myToken !== token || !playing) return;
+        advance(1) ? speakCurrent() : finish();
+      };
+      await audio.play();
+    } catch (err) {
+      if (myToken !== token) return;
+      console.error(err);
+      pause();
+      setVoiceStatus(err.name === 'TypeError'
+        ? 'No se pudo conectar con ElevenLabs. Revisa tu conexión.'
+        : err.message, true);
+    }
+  }
+
   function speakCurrent() {
     const myToken = ++token;
+    if (elevenVoiceId()) { speakEleven(myToken); return; }
     const text = sections[pos.s].chunks[pos.c];
     const u = new SpeechSynthesisUtterance(text);
     const voice = currentVoice();
@@ -305,6 +446,7 @@
   function play() {
     if (!sections.length) return;
     synth.cancel();
+    audio.pause();
     playing = true;
     els.playBtn.textContent = '⏸';
     speakCurrent();
@@ -315,6 +457,7 @@
     playing = false;
     token++;
     synth.cancel();
+    audio.pause();
     els.playBtn.textContent = '▶';
     setMediaState('paused');
   }
@@ -402,9 +545,19 @@
   const restartIfPlaying = () => { if (playing) play(); };
   els.voiceSelect.addEventListener('change', () => {
     store.set('lector:voice', els.voiceSelect.value);
+    updateEngineUi();
     restartIfPlaying();
   });
-  els.rate.addEventListener('input', () => { els.rateVal.textContent = `${parseFloat(els.rate.value).toFixed(1)}×`; });
+  els.elevenKey.value = store.get('lector:elevenKey') || '';
+  els.elevenKey.addEventListener('change', () => {
+    store.set('lector:elevenKey', els.elevenKey.value.trim());
+    clearClips();
+    updateEngineUi();
+  });
+  els.rate.addEventListener('input', () => {
+    els.rateVal.textContent = `${parseFloat(els.rate.value).toFixed(1)}×`;
+    audio.playbackRate = parseFloat(els.rate.value);
+  });
   els.rate.addEventListener('change', () => { store.set('lector:rate', els.rate.value); restartIfPlaying(); });
   els.pitch.addEventListener('input', () => { els.pitchVal.textContent = parseFloat(els.pitch.value).toFixed(1); });
   els.pitch.addEventListener('change', restartIfPlaying);

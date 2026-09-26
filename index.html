@@ -48,10 +48,16 @@
         <label>Velocidad <span id="rateVal">1.0×</span>
           <input id="rate" type="range" min="0.5" max="2.5" step="0.1" value="1">
         </label>
-        <label>Tono <span id="pitchVal">1.0</span>
+        <label id="pitchLabel">Tono <span id="pitchVal">1.0</span>
           <input id="pitch" type="range" min="0.5" max="1.5" step="0.1" value="1">
         </label>
       </div>
+      <div id="elevenBox" class="row settings hidden">
+        <label>API key de ElevenLabs
+          <input id="elevenKey" type="password" placeholder="sk_…" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <p id="voiceStatus" class="hint hidden"></p>
       <p class="hint">Toca cualquier frase del texto para empezar a leer desde ahí.</p>
     </section>
 

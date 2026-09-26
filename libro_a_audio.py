@@ -9,20 +9,33 @@ Ejemplos:
     python libro_a_audio.py mi_libro.epub --por-capitulo
     python libro_a_audio.py mi_libro.pdf --voz es-ES-AlvaroNeural --velocidad +15%
     python libro_a_audio.py --voces            # lista las voces en español
+
+Con ElevenLabs (necesita tu API key):
+    export ELEVENLABS_API_KEY=sk_...
+    python libro_a_audio.py mi_libro.pdf --elevenlabs
+    python libro_a_audio.py mi_libro.pdf --elevenlabs OTRO_ID_DE_VOZ
 """
 
 import argparse
 import asyncio
+import json
+import os
 import posixpath
 import re
 import sys
 import zipfile
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
 VOZ_POR_DEFECTO = "es-MX-DaliaNeural"
 MAX_CARACTERES = 4000  # tamaño de cada bloque enviado al servicio de voz
+
+ELEVEN_VOZ_POR_DEFECTO = "jbRykb1aT1FR2rySl8nh"
+ELEVEN_MODELO = "eleven_multilingual_v2"
+ELEVEN_MAX_CARACTERES = 2500
 
 
 # ---------- Lectura de formatos ----------
@@ -153,6 +166,68 @@ async def sintetizar(texto: str, destino, voz: str, velocidad: str) -> None:
             await asyncio.sleep(2 * (intento + 1))
 
 
+def _velocidad_a_factor(velocidad: str) -> float:
+    """Convierte "+15%" en 1.15, limitado al rango que acepta ElevenLabs (0.7–1.2)."""
+    try:
+        factor = 1 + float(velocidad.strip().rstrip("%")) / 100
+    except ValueError:
+        sys.exit(f"Velocidad no válida: {velocidad}. Usa algo como +10% o -10%.")
+    return min(1.2, max(0.7, factor))
+
+
+def _pedir_eleven(texto: str, voz: str, api_key: str, velocidad: str) -> bytes:
+    cuerpo = {"text": texto, "model_id": ELEVEN_MODELO}
+    factor = _velocidad_a_factor(velocidad)
+    if factor != 1:
+        cuerpo["voice_settings"] = {"speed": factor}
+    pedido = Request(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voz}?output_format=mp3_44100_128",
+        data=json.dumps(cuerpo).encode(),
+        headers={"xi-api-key": api_key, "Content-Type": "application/json", "Accept": "audio/mpeg"},
+        method="POST",
+    )
+    try:
+        with urlopen(pedido, timeout=120) as respuesta:
+            return respuesta.read()
+    except HTTPError as e:
+        detalle = e.read().decode(errors="ignore")[:300]
+        if e.code == 401:
+            raise RuntimeError(f"ElevenLabs rechazó la API key (401). {detalle}") from None
+        if e.code in (400, 401, 402, 403, 404, 422):
+            raise RuntimeError(f"ElevenLabs {e.code}: {detalle}") from None
+        raise
+
+
+async def sintetizar_eleven(texto: str, destino, voz: str, velocidad: str, api_key: str) -> None:
+    for intento in range(3):
+        try:
+            destino.write(await asyncio.to_thread(_pedir_eleven, texto, voz, api_key, velocidad))
+            return
+        except (HTTPError, URLError, TimeoutError) as e:  # errores de red o 429/5xx: reintentar
+            if intento == 2:
+                raise
+            print(f"   ⚠ Error ({e}); reintentando…")
+            await asyncio.sleep(5 * (intento + 1))
+
+
+def preparar_motor(args):
+    """Devuelve (función que sintetiza un bloque, tamaño máximo de bloque, descripción)."""
+    if args.elevenlabs:
+        api_key = args.api_key or os.environ.get("ELEVENLABS_API_KEY", "").strip()
+        if not api_key:
+            sys.exit("Falta la API key de ElevenLabs. Usa --api-key sk_... o la variable ELEVENLABS_API_KEY.")
+
+        async def motor(texto, destino):
+            await sintetizar_eleven(texto, destino, args.elevenlabs, args.velocidad, api_key)
+
+        return motor, ELEVEN_MAX_CARACTERES, f"ElevenLabs {args.elevenlabs}"
+
+    async def motor(texto, destino):
+        await sintetizar(texto, destino, args.voz, args.velocidad)
+
+    return motor, MAX_CARACTERES, args.voz
+
+
 def nombre_seguro(texto: str) -> str:
     return re.sub(r"[^\w\- ]+", "", texto).strip().replace(" ", "_")[:50] or "seccion"
 
@@ -172,9 +247,10 @@ async def convertir(args) -> None:
         hasta = args.hasta or len(secciones)
         secciones = secciones[desde:hasta]
 
+    motor, maximo, descripcion = preparar_motor(args)
     salida = Path(args.salida or ruta.with_suffix(""))
     total_car = sum(len(t) for _, t in secciones)
-    print(f"   {len(secciones)} secciones · {total_car:,} caracteres · voz {args.voz}")
+    print(f"   {len(secciones)} secciones · {total_car:,} caracteres · voz {descripcion}")
 
     if args.por_capitulo:
         salida.mkdir(parents=True, exist_ok=True)
@@ -182,16 +258,16 @@ async def convertir(args) -> None:
             archivo = salida / f"{i:03d}_{nombre_seguro(titulo)}.mp3"
             print(f"🔊 [{i}/{len(secciones)}] {titulo} → {archivo.name}")
             with open(archivo, "wb") as f:
-                for bloque in dividir(texto):
-                    await sintetizar(bloque, f, args.voz, args.velocidad)
+                for bloque in dividir(texto, maximo):
+                    await motor(bloque, f)
         print(f"✅ Listo: carpeta {salida}/")
     else:
         archivo = salida.with_suffix(".mp3")
-        bloques = [b for _, texto in secciones for b in dividir(texto)]
+        bloques = [b for _, texto in secciones for b in dividir(texto, maximo)]
         with open(archivo, "wb") as f:
             for i, bloque in enumerate(bloques, 1):
                 print(f"🔊 Generando audio {i}/{len(bloques)} ({i * 100 // len(bloques)} %)", end="\r")
-                await sintetizar(bloque, f, args.voz, args.velocidad)
+                await motor(bloque, f)
         print(f"\n✅ Listo: {archivo}")
 
 
@@ -213,6 +289,9 @@ def main() -> None:
     p.add_argument("-c", "--por-capitulo", action="store_true", help="un MP3 por capítulo/página")
     p.add_argument("--desde", type=int, help="primera sección (página/capítulo) a convertir")
     p.add_argument("--hasta", type=int, help="última sección a convertir")
+    p.add_argument("-e", "--elevenlabs", nargs="?", const=ELEVEN_VOZ_POR_DEFECTO, metavar="ID_VOZ",
+                   help=f"usar ElevenLabs (voz por defecto {ELEVEN_VOZ_POR_DEFECTO})")
+    p.add_argument("--api-key", help="API key de ElevenLabs (o variable ELEVENLABS_API_KEY)")
     p.add_argument("--voces", action="store_true", help="lista las voces disponibles en español")
     args = p.parse_args()
 

@@ -62,8 +62,8 @@ input[type=range] { accent-color: var(--accent); }
 
 .row { display: flex; flex-wrap: wrap; gap: 12px; }
 .row label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); flex: 1 1 180px; min-width: 0; }
-select, input[type=range] { width: 100%; }
-select {
+select, input[type=range], input[type=password] { width: 100%; }
+select, input[type=password] {
   padding: 6px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -89,6 +89,7 @@ select {
 
 .settings { margin-top: 10px; }
 .hint { font-size: .8rem; color: var(--muted); margin: 10px 0 0; }
+.hint.error { color: var(--accent); }
 
 .reader {
   margin-top: 16px;
