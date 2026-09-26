@@ -33,7 +33,9 @@ from xml.etree import ElementTree
 VOZ_POR_DEFECTO = "es-MX-DaliaNeural"
 MAX_CARACTERES = 4000  # tamaño de cada bloque enviado al servicio de voz
 
-ELEVEN_VOZ_POR_DEFECTO = "jbRykb1aT1FR2rySl8nh"
+ELEVEN_VOZ_POR_DEFECTO = "jbRykb1aT1FR2rySl8nh"  # Bunty – Warm and Clear
+# Ajustes de la muestra de Bunty (…_pvc_sp100_s99_sb75_se0_b_m2.mp3)
+ELEVEN_AJUSTES = {"stability": 0.99, "similarity_boost": 0.75, "style": 0, "use_speaker_boost": True, "speed": 1.0}
 ELEVEN_MODELO = "eleven_multilingual_v2"
 ELEVEN_MAX_CARACTERES = 2500
 
@@ -177,9 +179,12 @@ def _velocidad_a_factor(velocidad: str) -> float:
 
 def _pedir_eleven(texto: str, voz: str, api_key: str, velocidad: str) -> bytes:
     cuerpo = {"text": texto, "model_id": ELEVEN_MODELO}
+    ajustes = dict(ELEVEN_AJUSTES) if voz == ELEVEN_VOZ_POR_DEFECTO else {}
     factor = _velocidad_a_factor(velocidad)
     if factor != 1:
-        cuerpo["voice_settings"] = {"speed": factor}
+        ajustes["speed"] = factor
+    if ajustes:
+        cuerpo["voice_settings"] = ajustes
     pedido = Request(
         f"https://api.elevenlabs.io/v1/text-to-speech/{voz}?output_format=mp3_44100_128",
         data=json.dumps(cuerpo).encode(),

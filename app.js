@@ -22,8 +22,13 @@
   };
 
   // Voces de ElevenLabs (necesitan API key). Para agregar otra, añade su ID aquí.
+  // Los ajustes de Bunty son los de la muestra: …_pvc_sp100_s99_sb75_se0_b_m2.mp3
   const ELEVEN_VOICES = [
-    { id: 'jbRykb1aT1FR2rySl8nh', name: 'ElevenLabs' },
+    {
+      id: 'jbRykb1aT1FR2rySl8nh',
+      name: 'Bunty – Warm and Clear',
+      settings: { stability: 0.99, similarity_boost: 0.75, style: 0, use_speaker_boost: true, speed: 1.0 },
+    },
   ];
   const ELEVEN_MODEL = 'eleven_multilingual_v2';
   const ELEVEN_PREFIX = 'eleven:';
@@ -282,7 +287,7 @@
       (system ? `<optgroup label="Voces del navegador">${system}</optgroup>` : '');
     const options = [...els.voiceSelect.options].map((o) => o.value);
     if (saved && options.includes(saved)) els.voiceSelect.value = saved;
-    else if (voices.length) els.voiceSelect.value = sorted[0].name;
+    else els.voiceSelect.value = options[0];
     updateEngineUi();
   }
 
@@ -327,6 +332,7 @@
 
   function getClip(g) {
     const voiceId = elevenVoiceId();
+    const voiceSettings = ELEVEN_VOICES.find((v) => v.id === voiceId)?.settings;
     const key = `${voiceId}|${g}`;
     if (clipCache.has(key)) return clipCache.get(key);
 
@@ -341,7 +347,7 @@
         'Content-Type': 'application/json',
         Accept: 'audio/mpeg',
       },
-      body: JSON.stringify({ text, model_id: ELEVEN_MODEL }),
+      body: JSON.stringify({ text, model_id: ELEVEN_MODEL, ...(voiceSettings && { voice_settings: voiceSettings }) }),
     }).then(async (res) => {
       if (!res.ok) {
         let detail = '';
